@@ -2,6 +2,42 @@
 
 - Once a stream is terminated it cannot be used again
 
+#### Reducing streams
+
+- Immutable result container
+- `Identity` – an element that is the initial value of the reduction operation AND the default result if the stream is empty
+- `Accumulator` – a function that takes two parameters: a partial result of the reduction operation and the next element of the stream 
+- `Combiner` – a function used to combine the partial result of the reduction operation when the reduction is parallelized or when there's a mismatch between the types of the accumulator arguments and the types of the accumulator implementation
+
+#### Collecting Streams
+
+- A collection operation reduces a stream into a `mutable result container`
+  - Like turning the result into an ArrayList
+- combiner function mutates first result container with the result of the second container
+  - Like adding all the results from one array list into another
+  
+![](./images/1.png)
+
+- Note that the accumulator doesn't return a value, it is expected that whatever that value is will be added to the accumulator itself
+
+#### Parallel Streams
+
+- Lets you process things in parallel easily if you have more CPUs
+- There is some overhead
+- Change `stream()` -> `parallelStream()`
+  - We hand off the iteration to the stream API (internal iteration)
+    - This is in contrast to an external iteration (like writing your own for loop)
+- Not a magic solution
+  - Managing threads and communication thread provides some overhead
+  - In some cases, this can be slower than a sequential thread
+- Parallel streams is most useful when the thing you're being limited by is CPU
+  - If you're limited by something else other than CPU, you may not see any benefit
+    - For example, querying a data on each iteration or doing I/O on each operation
+- You should measure between sequential and parallel to see which one makes sense for your use case
+- `Collectors.groupingBy` is not efficient for parallel streams
+  - You should do `Collector.groupByConcurrent`
+    - One thing to note here, it is an unordered collector (unlike normal groupingBy)
+
 ### Junit
 
 - Note in the pom.xml, that there is only one dependency for junit5
@@ -196,3 +232,287 @@ public <T extends Number> List<T> fromArrayToList(T[] a) {
 - Certificate 6, the one at the top of the chain (or at the end, depending on how you read it) is the `root certificate`
 - When you install your end-user certificate for `example.awesome`, you **must** bundle all the intermediate certificates and install them along with your end-user certificate
 - If the SSL certificate chain is invalid or broken, your certificate won't be trusted by some devices
+
+
+## Concurrency
+
+### Introduction
+
+- **Executing different paths of instructions at the same time**
+- Different types:
+  - Does not necessarily mean parallel execution (but it might)
+  - multiprocessing - multiple CPUs
+    - Running at the same time doing independent tasks
+- multitasking
+  - one CPU alternating between tasks
+  - not parallel execution
+- multithreading
+  - different parts of the same program using different threads
+  
+#### Pros and Cons
+
+- Pros
+  - Decreasing waiting and response time
+  - Optimal usage of resources
+  - High efficency
+  - Improved performance
+- Cons
+  - Shared resources need to handled carefully
+      - Collaboration has to be managed
+  - Managing data integrity can be more difficult
+      - If two people want to write to a database at the same time, you need to watch for this
+  - Managing memory is more difficult
+  - Concurrency problems:
+    - deadlock
+    - livelock
+    - race condition
+  - Switching threads comes with a cost
+  
+#### What Are Threads?
+
+- Execution of instructions
+- Smallest unit of execution
+- Threads perform tasks
+- Processes consist of multiple threads
+- JVM allocates threads to different things during your program - like garbage collection
+
+```
+package concurrency;
+
+public class RiddleThread extends Thread {
+
+    public void run() {
+        System.out.println("I'm the task of CustomThread");
+        System.out.println("Thread ID in task is: " + Thread.currentThread().getId());
+    }
+
+    public static void main(String[] args) {
+        var riddleThread = new RiddleThread();
+        riddleThread.run();
+        System.out.println("Thread ID in main is: " + Thread.currentThread().getId());
+    }
+}
+```
+
+- Doing this, the program will use the same thread (ids will be the same when they print)
+- `run` doesn't start a new thread
+
+#### Creating Threads
+
+```
+public class App {
+    public static void main(String[] args) {
+        var customThread = new CustomThread();
+        
+        var thread = new Thread(() -> System.out.println("Hi"));
+        thread.start();
+    }
+}
+```
+
+- Note here, you CANNOT determine which thing will print out first here (custom thread prints out some text in the run method as well)
+  - It is running asynchronously
+
+#### Runnable and Callable
+
+- Callable has extra options, you can return values, and it has checked exceptions
+- You use callable with `ExecutorService`;
+- Runnable
+  - Functional interface
+  - Represents a task to be executed by a thread
+  - Abstract method `run`
+  - Returns void
+  - Cannot throw exception
+  - `Submit` returns `Future` with null
+- Callable
+  - Functional interface
+  - Represents a task to be executed by a thread
+  - Abstract method `call`
+  - Returns specified generic type
+  - Can throw exception
+  - `Submit` returns Future with generic type you specified
+
+#### Sleep, Interrupt, and Join
+
+- Threads can go to sleep
+  - Pause in execution
+  - Avoid if possible
+  - Bad way to solve a problem like a race condition
+- Asleep threads can be interrupted
+- With `join` we wait for another thread to complete
+  - Can wait indefinitely or you can wait a certain amount of time
+  
+### Synchronized and Locks
+
+#### Thread Interference
+
+- Calling `incrementCounter()` concurrently with 10 threads in `Count` class
+
+```
+Before: 0 Current thread: 22
+Before: 0 Current thread: 18
+Before: 0 Current thread: 19
+Before: 0 Current thread: 21
+Before: 0 Current thread: 17
+Before: 0 Current thread: 16
+Before: 0 Current thread: 23
+Before: 0 Current thread: 15
+After: 1 Current thread: 18
+Before: 0 Current thread: 14
+Before: 0 Current thread: 20
+After: 1 Current thread: 14
+After: 1 Current thread: 17
+After: 1 Current thread: 21
+After: 1 Current thread: 15
+After: 1 Current thread: 19
+After: 1 Current thread: 23
+After: 1 Current thread: 22
+After: 1 Current thread: 16
+After: 1 Current thread: 20
+```
+- Note here that we never actually get to increment past 1
+- If we were to do this sequentially, we would only have 1 thread and we would reach to 10;
+- There can be `thread interference`, while one thread is trying to increment, another can read it and get the old value
+
+#### Synchronized Keyword
+
+- Data integrity issues when you have multiple threads reading writing data
+- ONE fix for this is using synchronized
+  - When a method is synchronized, only one thread can be in this method at the same time
+  - If you have a method that is synchronized and there are multiple instances of a class, those methods are esentially different and those different instance methods can be accessed at the same tme
+- You can always have synchronized blocks using object locks
+
+#### Lock Framework: Locks Interface and ReentrantLock
+
+- Limitations of Synchronized Keyword
+  - Threads are waiting
+  - No way to check whether the lock is available
+    - When a lock is not available, you might want to do something else
+  - If lock remains, waiting thread waits forever
+
+<br>
+
+- You can protect a piece of code using the `Lock` inteface and use more avanced functions
+  - `ReentrantLock` is built solution
+    - void lock()
+    - void unlock()
+    - boolean tryLock() (is lock available)
+    - boolean tryLock(long, TimeUnit)
+  
+### ExecutorService and Thread Pools
+
+- ExecutorService
+  - Interface and help us to manage and execute tasks async
+  - Able to queue tasks an assign them to a thread in the right order once a thread frees up
+  - Multiple implementations of interface
+  - Have to tell service what tasks to execute
+  - Have to close executor service once tasks are all done
+  
+#### Submit and Future
+
+- Takes callable 
+- Perform asynchronously
+- Get `future` back
+  - You get result out of the future
+  - You get a `future` result
+- Several helpful methods on future
+  - Check if future is done with `isDone()`
+  - Check if future was cancelled with `isCancelled()`
+  - Cancel it with `cancel()`
+  - Can use `get()`
+    - You can also specify how long to wait for the future with `get()`
+  
+#### Thread Pools
+
+- Multiple threads that are performing tasks or waiting for a task
+- Available threads pick up tasks from a queue
+- When a thread is done, it will pick up a new task instead of getting destroyed
+
+#### Different ExecutorServices
+
+- SingleThreadExecutor
+- SingleThreadScheduledExecutor
+  - Can perform a certain task periodically with a delay between task's start or the task's end
+- CachedThreadPool
+  - Creating new threads
+  - Items that are on the queue get picked up by a thread
+    - If no thread is available, a new thread is created
+  - Threads don't get destroyed right away in case a new task comes in
+    - Threads can stay idle for awhile
+      - This is why they are "cached"
+  - Have to be careful here because you can actually create the integer max values of threads if it were up to Java
+- FixedThreadPool
+  - Threads are never killed
+- ScheduledThreadPool
+  - Multithreaded version of `SingleThreadScheduledExectuor`
+  - `ScheduleAtFixedRate` will run a task every so often
+  - `ScheduleWithFixedDelay` will wait a amount of certain time after a task finishes
+
+<br>
+
+- ExecutorService
+  - execute
+  - submit
+  - invokeAll
+  - invokeAny
+- ScheduledExecutorService
+  - schedule
+  - scheduleAtFixedRate
+  - scheduleAtFixedDelay
+
+### Concurrent Collections and Atomic Variables
+
+#### Concurrent Collections: Why and Why
+
+- Collections are not thread safe
+- Using normal collections in a multi-threaded env will lead to problems with data integrity
+  - When one thread is reading and another is writing, you might get conflicts
+  
+<br>
+
+- Example of problem
+
+```
+public class CollectionProblems {
+    public static void main(String[] args) {
+        var stringStringMap = new HashMap<String, String>();
+
+        stringStringMap.put("Maaike", "Java");
+        stringStringMap.put("Remsey", "C#");
+
+        for (var k: stringStringMap.keySet()) {
+            System.out.println(k + " loves codes " + stringStringMap.get(k));
+            stringStringMap.remove(k);
+        }
+    }
+}
+```
+
+- This throws error
+
+```
+Remsey loves codes C#
+Exception in thread "main" java.util.ConcurrentModificationException
+	at java.base/java.util.HashMap$HashIterator.nextNode(HashMap.java:1493)
+	at java.base/java.util.HashMap$KeyIterator.next(HashMap.java:1516)
+	at concurrent_variables_and_atomic_variables.CollectionProblems.main(CollectionProblems.java:12)
+```
+
+- Java throws this same error when multiple threads try to change the same collection at the same time
+- **This is what concurrent collections are for**
+  - They allow locking per segement (reading/writing)
+  - Multiple threads can get read access
+    - Assures data integrity and ensures performance is not hit unnecessarily
+- ConcurrentCollections are better than using synchronized keyword
+
+#### Concurrent Collection Interfaces
+
+- ConcurrentMap
+  - Child of Map
+- BlockingQueue
+  - Child of Queue
+
+
+### Threading Problems
+
+- 
